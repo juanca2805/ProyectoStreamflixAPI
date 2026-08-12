@@ -1,0 +1,66 @@
+Usando la configuración de inicio de C:\CursoC\ProyectoNetflix\src\StreamFlix.Api\Properties\launchSettings.json...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5188
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\CursoC\ProyectoNetflix\src\StreamFlix.Api
+warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
+      Failed to determine the https port for redirect.
+info: StreamFlix.Application.Movies.MovieService[0]
+      Consultando película 00000000-0000-0000-0000-000000000000
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (31ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT m1."Id", m1."Description", m1."DurationMinutes", m1."Rating", m1."ReleaseYear", m1."Title", s."MovieId", s."GenreId", s."Id", s."Name"
+      FROM (
+          SELECT m."Id", m."Description", m."DurationMinutes", m."Rating", m."ReleaseYear", m."Title"
+          FROM "Movies" AS m
+          WHERE m."Id" = @id
+          LIMIT 1
+      ) AS m1
+      LEFT JOIN (
+          SELECT m0."MovieId", m0."GenreId", g."Id", g."Name"
+          FROM "MovieGenres" AS m0
+          INNER JOIN "Genres" AS g ON m0."GenreId" = g."Id"
+      ) AS s ON m1."Id" = s."MovieId"
+      ORDER BY m1."Id", s."MovieId", s."GenreId"
+warn: StreamFlix.Api.Middleware.ExceptionHandlingMiddleware[0]
+      NotFoundException: Movie con id '00000000-0000-0000-0000-000000000000' no fue encontrado.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Email", u."Name", u."PasswordHash"
+      FROM "Users" AS u
+      WHERE u."Id" = @id
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT m1."Id", m1."Description", m1."DurationMinutes", m1."Rating", m1."ReleaseYear", m1."Title", s."MovieId", s."GenreId", s."Id", s."Name"
+      FROM (
+          SELECT m."Id", m."Description", m."DurationMinutes", m."Rating", m."ReleaseYear", m."Title"
+          FROM "Movies" AS m
+          WHERE m."Id" = @id
+          LIMIT 1
+      ) AS m1
+      LEFT JOIN (
+          SELECT m0."MovieId", m0."GenreId", g."Id", g."Name"
+          FROM "MovieGenres" AS m0
+          INNER JOIN "Genres" AS g ON m0."GenreId" = g."Id"
+      ) AS s ON m1."Id" = s."MovieId"
+      ORDER BY m1."Id", s."MovieId", s."GenreId"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@userId='?' (DbType = Guid), @movieId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."MovieId", f."UserId"
+      FROM "Favorites" AS f
+      WHERE f."UserId" = @userId AND f."MovieId" = @movieId
+      LIMIT 1
+warn: StreamFlix.Api.Middleware.ExceptionHandlingMiddleware[0]
+      ConflictException: La película ya está en favoritos.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (29ms) [Parameters=[@idList='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT g."Id", g."Name"
+      FROM "Genres" AS g
+      WHERE g."Id" = ANY (@idList)
+warn: StreamFlix.Api.Middleware.ExceptionHandlingMiddleware[0]
+      ArgumentException: El título de la película es obligatorio. (Parameter 'title')

@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: streamflix-postgres
+
+    environment:
+      # Estas tres variables son las que la imagen oficial de Postgres usa
+      # para crear el usuario, la contraseña y la base de datos en el primer arranque.
+      POSTGRES_USER: streamflix_user
+      POSTGRES_PASSWORD: streamflix_password
+      POSTGRES_DB: streamflix
+
+    ports:
+      # host:contenedor. La API (fuera de Docker) se conecta a localhost:5432,
+      # que Docker redirige al puerto 5432 dentro del contenedor donde escucha Postgres.
+      - "5432:5432"
+
+    volumes:
+      # Sin este volumen, los datos vivirían solo dentro del contenedor y
+      # se perderían cada vez que se hiciera `docker compose down`.
+      # Con el volumen nombrado, los datos persisten en disco entre reinicios.
+      - streamflix_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamflix_user -d streamflix"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  streamflix_postgres_data:

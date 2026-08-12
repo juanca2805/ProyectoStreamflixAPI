@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StreamFlix.Api/StreamFlix.Api.csproj" />
+    <Project Path="src/StreamFlix.Application/StreamFlix.Application.csproj" />
+    <Project Path="src/StreamFlix.Domain/StreamFlix.Domain.csproj" />
+    <Project Path="src/StreamFlix.Infrastructure/StreamFlix.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StreamFlix.IntegrationTests/StreamFlix.IntegrationTests.csproj" />
+    <Project Path="tests/StreamFlix.UnitTests/StreamFlix.UnitTests.csproj" />
+  </Folder>
+</Solution>
