@@ -1,0 +1,59 @@
+name: CI
+
+# Corre en cada Pull Request contra main, y también en cada push directo a
+# main (por ejemplo, si alguna vez se mergea sin pasar por PR).
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Compilar y testear
+    runs-on: ubuntu-latest
+
+    # PostgreSQL para los tests de integración. MoviesEndpointsTests arranca
+    # la API real (WebApplicationFactory) usando la misma cadena de conexión
+    # de appsettings.Development.json: localhost:5432 con estas credenciales.
+    # Un contenedor definido acá, en "services", queda accesible en el
+    # localhost del propio runner — no hace falta tocar ninguna
+    # configuración para que los tests lo encuentren.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: streamflix_user
+          POSTGRES_PASSWORD: streamflix_password
+          POSTGRES_DB: streamflix
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U streamflix_user -d streamflix"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar dependencias
+        run: dotnet restore
+
+      - name: Compilar (Release)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Tests unitarios
+        run: dotnet test tests/StreamFlix.UnitTests --no-build --configuration Release
+
+      - name: Tests de integración
+        # Las migraciones se aplican solas al levantar la API en memoria
+        # (Database.Migrate() en Program.cs), así que no hace falta ningún
+        # paso extra para crear el esquema antes de este step.
+        run: dotnet test tests/StreamFlix.IntegrationTests --no-build --configuration Release
