@@ -13,7 +13,7 @@ Proyecto backend **educativo**, inspirado conceptualmente en una plataforma como
 | C# / .NET 10 | Lenguaje y runtime |
 | ASP.NET Core Web API | API REST |
 | PostgreSQL | Base de datos relacional |
-| Docker / Docker Compose | Levantar PostgreSQL de forma reproducible |
+| Docker / Docker Compose | Levantar la API + PostgreSQL de forma reproducible, con un solo comando |
 | Entity Framework Core + Npgsql | ORM y acceso a datos |
 | Swagger / Swashbuckle | Documentación interactiva de la API |
 | xUnit + Moq | Tests unitarios |
@@ -100,40 +100,67 @@ StreamFlix/
 │   ├── StreamFlix.UnitTests/        Tests de servicios con Moq
 │   └── StreamFlix.IntegrationTests/ Tests end-to-end con WebApplicationFactory
 │
-├── docker-compose.yml               PostgreSQL
+├── docker-compose.yml               API + PostgreSQL
+├── Dockerfile                       Imagen de StreamFlix.Api (build multi-stage)
+├── .dockerignore
 ├── README.md
-└── StreamFlix.sln
+└── StreamFlix.slnx
 ```
 
 ---
 
 ## Requisitos
 
+**Para levantar todo con Docker (recomendado, no necesitás instalar nada de .NET):**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+**Para correr/debuggear en local desde el IDE:**
 - [.NET SDK 10](https://dotnet.microsoft.com/) o superior
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para PostgreSQL)
-- Herramienta `dotnet-ef`: `dotnet tool install --global dotnet-ef`
+- Herramienta `dotnet-ef`, **solo si vas a crear una migración nueva**: `dotnet tool install --global dotnet-ef`
 
 ---
 
 ## Ejecución
 
+### Opción A: todo con Docker (recomendado)
+
+Para alguien que solo clona el repo y quiere verlo andar, sin instalar el SDK de .NET:
+
 ```bash
-# 1. Levantar PostgreSQL
-docker compose up -d
+docker compose up --build
+```
 
-# 2. Restaurar dependencias
+Esto levanta PostgreSQL **y** la API en un solo comando. La API queda en
+`http://localhost:5188`, y al arrancar aplica las migraciones sola (crea las
+tablas si no existen) — no hace falta ningún paso manual de base de datos.
+
+Para bajar todo:
+
+```bash
+docker compose down       # conserva los datos
+docker compose down -v    # borra también el volumen de PostgreSQL
+```
+
+### Opción B: en local, para desarrollar y debuggear desde el IDE
+
+```bash
+# 1. Levantar solo PostgreSQL
+docker compose up -d postgres
+
+# 2. Restaurar y compilar
 dotnet restore
-
-# 3. Compilar
 dotnet build
 
-# 4. Aplicar migraciones (crea las tablas en PostgreSQL)
+# 3. Ejecutar la API
 cd src/StreamFlix.Api
-dotnet ef database update --project ../StreamFlix.Infrastructure --startup-project .
-
-# 5. Ejecutar la API
 dotnet run
 ```
+
+Las migraciones se aplican solas al arrancar (`Database.Migrate()` en
+`Program.cs`), igual que en Docker — no hace falta correr
+`dotnet ef database update` a mano. Esa herramienta solo la necesitás si vas
+a **crear** una migración nueva (`dotnet ef migrations add ...`).
 
 La API queda escuchando en la URL que indique la consola (ver `Properties/launchSettings.json`, por defecto algo como `http://localhost:5188`).
 

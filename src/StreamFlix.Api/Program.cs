@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using StreamFlix.Api.Middleware;
 using StreamFlix.Application;
 using StreamFlix.Infrastructure;
+using StreamFlix.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +34,22 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// --- Migraciones automáticas al arrancar ---
+//
+// Sin esto, alguien que clona el repo y corre `docker compose up` se
+// encuentra con una base de datos sin tablas: el esquema solo se crea si
+// alguien ejecuta `dotnet ef database update` a mano, y quien recién clona
+// el repo no tiene por qué saber ni tener instalado `dotnet-ef`.
+//
+// Database.Migrate() aplica las migraciones pendientes (o no hace nada si
+// ya están todas aplicadas), así que es seguro dejarlo correr en cada
+// arranque, tanto en Docker como en local.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 // --- Pipeline HTTP ---
 //

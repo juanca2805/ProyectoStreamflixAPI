@@ -27,5 +27,31 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamflix-api
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # "postgres" es el nombre del servicio de arriba, no "localhost":
+      # dentro de la red que crea Compose, cada contenedor se resuelve por
+      # el nombre de su servicio. "localhost" acá adentro sería el propio
+      # contenedor de la API, no el de Postgres.
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=streamflix;Username=streamflix_user;Password=streamflix_password"
+
+    ports:
+      # host:contenedor. Queda en el mismo puerto que al correrla con
+      # `dotnet run` (ver README), para no tener que recordar dos URLs.
+      - "5188:8080"
+
+    depends_on:
+      # No alcanza con que el contenedor de Postgres exista: hay que
+      # esperar a que ya acepte conexiones (su healthcheck), o la API
+      # fallaría al aplicar las migraciones en el primer arranque.
+      postgres:
+        condition: service_healthy
+
 volumes:
   streamflix_postgres_data:
