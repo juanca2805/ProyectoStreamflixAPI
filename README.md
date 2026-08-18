@@ -317,11 +317,43 @@ dotnet test tests/StreamFlix.IntegrationTests
 
 La API usa **JWT (JSON Web Tokens)** para autenticación + autorización basada en roles.
 
+### Primer login (recién clonado el repo)
+
+No hace falta crear nada a mano. Al arrancar en modo Development (que es lo que
+hacen tanto `docker compose up --build` como `dotnet run`), la app crea sola un
+usuario Admin con las credenciales de `appsettings.Development.json`:
+
+| Campo | Valor |
+|---|---|
+| Email | `admin@streamflix.com` |
+| Password | `Admin123!` |
+
+```bash
+curl -X POST http://localhost:5188/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@streamflix.com","password":"Admin123!"}'
+```
+
+La respuesta trae un `token`. Con él ya se puede llamar a cualquier endpoint:
+
+```bash
+curl http://localhost:5188/api/movies -H "Authorization: Bearer {token}"
+```
+
+En Swagger (`http://localhost:5188/swagger`) es lo mismo: botón **Authorize**
+arriba a la derecha, pegar el token (sin el prefijo `Bearer`), y todos los
+"Try it out" lo envían automáticamente.
+
+> Estas credenciales son **solo de desarrollo**. En Production
+> (`appsettings.json` base) `AdminSeed` viene vacío a propósito y no se siembra
+> ningún admin: hay que definir `AdminSeed__Email` / `AdminSeed__Password` /
+> `Jwt__Key` por variables de entorno. Ver [El usuario Admin inicial](#el-usuario-admin-inicial).
+
 ### Cómo autenticarse
 
 ```
 POST /api/auth/login
-{ "email": "admin@streamflix.com", "password": "..." }
+{ "email": "...", "password": "..." }
 ```
 
 Devuelve un `token` (JWT firmado, HMAC-SHA256) y su `expiresAtUtc`. Ese token
