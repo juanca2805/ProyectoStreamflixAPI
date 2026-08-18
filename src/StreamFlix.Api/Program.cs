@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using StreamFlix.Api.Authorization;
 using StreamFlix.Api.Middleware;
 using StreamFlix.Application;
 using StreamFlix.Domain.Entities;
@@ -27,14 +28,15 @@ var builder = WebApplication.CreateBuilder(args);
 //   sin tocar ni una línea del Controller.
 //
 // AuthorizeFilter global: por defecto, CADA acción de CADA controller exige
-// un usuario autenticado que cumpla la policy "AdminOnly" (ver más abajo),
-// sin tener que decorar cada controller con [Authorize] a mano y sin
-// arriesgarse a olvidarlo en uno nuevo. AuthController es la única excepción,
-// marcada explícitamente con [AllowAnonymous]: sin login no hay token, y sin
-// token ningún otro endpoint sería alcanzable.
+// un usuario AUTENTICADO (token válido, cualquier rol), sin tener que decorar
+// cada controller con [Authorize] a mano y sin arriesgarse a olvidarlo en uno
+// nuevo. Sobre esa base, cada Controller/acción endurece lo que hace falta con
+// [Authorize(Policy = Policies.AdminOnly / OwnerOrAdmin)] (ver Authorization/Policies.cs).
+// AuthController es la única excepción, marcada con [AllowAnonymous]: sin login
+// no hay token, y sin token ningún otro endpoint sería alcanzable.
 builder.Services.AddControllers(options =>
 {
-    options.Filters.Add(new AuthorizeFilter("AdminOnly"));
+    options.Filters.Add(new AuthorizeFilter());
 });
 
 builder.Services.AddApplication();
@@ -70,11 +72,17 @@ builder.Services
         };
     });
 
+// OwnerOrAdminHandler necesita leer el {userId} de la ruta actual: IHttpContextAccessor
+// es la forma estándar de llegar al HttpContext desde un servicio que no es un Controller.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IAuthorizationHandler, OwnerOrAdminHandler>();
+
 builder.Services.AddAuthorization(options =>
 {
     // UserRole.Admin.ToString() (no el literal "Admin" suelto): así un rename del enum
     // rompe esta línea en la compilación en vez de dejar a todo el mundo con 403 en silencio.
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole(UserRole.Admin.ToString()));
+    options.AddPolicy(Policies.AdminOnly, policy => policy.RequireRole(UserRole.Admin.ToString()));
+    options.AddPolicy(Policies.OwnerOrAdmin, policy => policy.AddRequirements(new OwnerOrAdminRequirement()));
 });
 
 builder.Services.AddEndpointsApiExplorer();
