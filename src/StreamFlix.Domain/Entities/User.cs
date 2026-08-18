@@ -17,14 +17,16 @@ public class User
     public string Name { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
     public string PasswordHash { get; private set; } = string.Empty;
+    public UserRole Role { get; private set; } = UserRole.User;
 
     private User() { }
 
-    public User(string name, string email, string passwordHash)
+    public User(string name, string email, string passwordHash, UserRole role = UserRole.User)
     {
         SetName(name);
         SetEmail(email);
         SetPasswordHash(passwordHash);
+        Role = role;
 
         Id = Guid.NewGuid();
     }

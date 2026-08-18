@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using StreamFlix.Application.Auth;
 using StreamFlix.Application.Favorites;
 using StreamFlix.Application.Genres;
 using StreamFlix.Application.Movies;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<UserService>();
         services.AddScoped<FavoriteService>();
         services.AddScoped<WatchHistoryService>();
+        services.AddScoped<AuthService>();
 
         return services;
     }

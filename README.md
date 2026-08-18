@@ -16,6 +16,7 @@ Proyecto backend **educativo**, inspirado conceptualmente en una plataforma como
 | Docker / Docker Compose | Levantar la API + PostgreSQL de forma reproducible, con un solo comando |
 | Entity Framework Core + Npgsql | ORM y acceso a datos |
 | Swagger / Swashbuckle | Documentación interactiva de la API |
+| JWT (System.IdentityModel.Tokens.Jwt) | Autenticación y autorización basada en tokens y roles |
 | xUnit + Moq | Tests unitarios |
 | Microsoft.AspNetCore.Mvc.Testing | Tests de integración |
 
@@ -201,6 +202,8 @@ docker exec -it streamflix-postgres psql -U streamflix_user -d streamflix
 ## Endpoints
 
 ```
+POST   /api/auth/login          — único endpoint público, sin token
+
 GET    /api/movies
 GET    /api/movies/{id}
 POST   /api/movies
@@ -222,7 +225,7 @@ GET    /api/users/{userId}/history
 POST   /api/users/{userId}/history
 ```
 
-No implementa autenticación JWT (ver [Seguridad](#seguridad)).
+Todos los endpoints salvo `/api/auth/login` exigen `Authorization: Bearer {token}` de un usuario con rol Admin (ver [Seguridad](#seguridad)).
 
 ---
 
@@ -312,17 +315,69 @@ dotnet test tests/StreamFlix.IntegrationTests
 
 ## Seguridad
 
-Este proyecto **no implementa autenticación ni autorización** — está fuera de alcance a propósito, para mantener el foco en la arquitectura de capas.
+La API usa **JWT (JSON Web Tokens)** para autenticación + autorización basada en roles.
 
-Una evolución futura y realista añadiría:
+### Cómo autenticarse
 
 ```
-JWT (JSON Web Tokens)     — para autenticar al cliente en cada petición
-Authentication            — verificar "quién eres"
-Authorization             — verificar "qué puedes hacer" (roles, políticas)
-Password hashing           — ya implementado (PBKDF2), pero sin login que lo use aún
-Refresh tokens             — renovar la sesión sin pedir credenciales de nuevo
-Roles                      — ej. distinguir un usuario normal de un administrador
+POST /api/auth/login
+{ "email": "admin@streamflix.com", "password": "..." }
+```
+
+Devuelve un `token` (JWT firmado, HMAC-SHA256) y su `expiresAtUtc`. Ese token
+se envía en cada petición posterior:
+
+```
+Authorization: Bearer {token}
+```
+
+Un filtro de autorización global (`Program.cs`) exige, por defecto, un token
+válido con rol **Admin** en **todos** los endpoints — el único que queda
+público es `POST /api/auth/login` (marcado con `[AllowAnonymous]`), porque sin
+login no habría forma de conseguir el primer token.
+
+### El usuario Admin inicial
+
+Como no hay ningún endpoint público para registrar usuarios (registrarlos
+también exige un token de Admin), la app crea un único usuario Admin sola al
+arrancar (`AdminUserSeeder`, junto a las migraciones en `Program.cs`), a
+partir de estas variables de configuración:
+
+| Variable | Uso | Dónde se define |
+|---|---|---|
+| `AdminSeed__Name` | Nombre del admin sembrado | `appsettings.Development.json` en local/Docker |
+| `AdminSeed__Email` | Email con el que hacer login | ídem |
+| `AdminSeed__Password` | Password en texto plano (se hashea al crearlo) | ídem |
+
+Es idempotente: si el usuario con ese email ya existe, no hace nada. Si no se
+configuran `AdminSeed:Email`/`AdminSeed:Password` (como en `appsettings.json`
+base, pensado para producción), no se crea ningún admin y la API queda
+inaccesible hasta crear uno manualmente en la base de datos — a propósito,
+para no tener una contraseña de administrador con valor por defecto en un
+entorno real.
+
+### Configuración del token
+
+| Variable | Uso |
+|---|---|
+| `Jwt__Key` | Clave secreta usada para firmar y validar el token (HMAC-SHA256) |
+| `Jwt__Issuer` / `Jwt__Audience` | Validados al recibir el token |
+| `Jwt__ExpirationMinutes` | Vigencia del token (60 min en desarrollo) |
+
+`Program.cs` valida los tokens con la misma `Jwt:Key` que `JwtTokenGenerator`
+(Infrastructure) usa para firmarlos: si difieren, ningún token pasaría la
+validación.
+
+### Qué falta para producción
+
+```
+Refresh tokens   — renovar la sesión sin pedir credenciales de nuevo
+Roles adicionales — hoy solo existen User y Admin, y ningún endpoint distingue
+                     entre ambos: todo exige Admin, no hay nada reservado
+                     solo para User
+Jwt:Key real     — en appsettings.Development.json hay una clave de ejemplo;
+                     en un despliegue real debe salir de un secret manager,
+                     nunca de un archivo versionado
 ```
 
 ---

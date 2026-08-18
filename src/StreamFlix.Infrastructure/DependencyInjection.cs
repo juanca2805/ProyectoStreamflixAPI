@@ -37,6 +37,19 @@ public static class DependencyInjection
 
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 
+        // "Jwt" y "AdminSeed" se bindean acá (no en Program.cs) por el mismo motivo
+        // que el resto de este archivo: Api no necesita conocer JwtOptions ni
+        // AdminSeedOptions, solo pedir "un IJwtTokenGenerator" o "un AdminUserSeeder".
+        // Program.cs sí vuelve a leer "Jwt:Key/Issuer/Audience" directamente de la
+        // configuración al configurar AddJwtBearer, porque la validación del token
+        // (a diferencia de generarlo) es responsabilidad del pipeline HTTP, no de
+        // Infrastructure.
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<AdminSeedOptions>(configuration.GetSection(AdminSeedOptions.SectionName));
+
+        services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+        services.AddScoped<AdminUserSeeder>();
+
         return services;
     }
 }

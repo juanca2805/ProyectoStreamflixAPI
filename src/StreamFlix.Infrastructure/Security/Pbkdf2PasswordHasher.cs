@@ -27,4 +27,43 @@ public class Pbkdf2PasswordHasher : IPasswordHasher
 
         return $"{Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(key)}";
     }
+
+    public bool Verify(string plainPassword, string passwordHash)
+    {
+        var parts = passwordHash.Split('.', 3);
+        if (parts.Length != 3)
+            return false;
+
+        if (!int.TryParse(parts[0], out var iterations))
+            return false;
+
+        byte[] salt;
+        byte[] expectedKey;
+        try
+        {
+            salt = Convert.FromBase64String(parts[1]);
+            expectedKey = Convert.FromBase64String(parts[2]);
+        }
+        catch (FormatException)
+        {
+            // Un PasswordHash corrupto (fila editada a mano, dato legado, etc.) no es
+            // un error del sistema: es, ni más ni menos, una credencial que no verifica.
+            // Sin este catch, AuthService.LoginAsync dejaría escapar la FormatException
+            // y el middleware global la traduciría en un 500 en vez de un 401.
+            return false;
+        }
+
+        var actualKey = Rfc2898DeriveBytes.Pbkdf2(
+            plainPassword,
+            salt,
+            iterations,
+            HashAlgorithmName.SHA256,
+            expectedKey.Length);
+
+        // Comparación en tiempo constante: con "==" o SequenceEqual, el tiempo que
+        // tarda la comparación varía según cuántos bytes coinciden antes del primer
+        // byte distinto, lo que en teoría permite a un atacante deducir el hash
+        // byte a byte midiendo tiempos de respuesta (timing attack).
+        return CryptographicOperations.FixedTimeEquals(actualKey, expectedKey);
+    }
 }

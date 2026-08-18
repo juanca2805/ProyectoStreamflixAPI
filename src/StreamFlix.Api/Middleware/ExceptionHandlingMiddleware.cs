@@ -45,6 +45,7 @@ public class ExceptionHandlingMiddleware
         {
             NotFoundException => (HttpStatusCode.NotFound, "Recurso no encontrado"),
             ConflictException => (HttpStatusCode.Conflict, "Conflicto"),
+            UnauthorizedException => (HttpStatusCode.Unauthorized, "No autorizado"),
             ArgumentException => (HttpStatusCode.BadRequest, "Datos inválidos"),
             _ => (HttpStatusCode.InternalServerError, "Error inesperado")
         };
