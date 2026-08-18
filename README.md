@@ -225,7 +225,7 @@ GET    /api/users/{userId}/history
 POST   /api/users/{userId}/history
 ```
 
-Todos los endpoints salvo `/api/auth/login` exigen `Authorization: Bearer {token}` de un usuario con rol Admin (ver [Seguridad](#seguridad)).
+Todos los endpoints salvo `/api/auth/login` exigen `Authorization: Bearer {token}`. Qué puede hacer cada rol (User vs Admin) está en [Seguridad → Roles](#roles-qué-puede-hacer-cada-uno).
 
 ---
 
@@ -332,9 +332,31 @@ Authorization: Bearer {token}
 ```
 
 Un filtro de autorización global (`Program.cs`) exige, por defecto, un token
-válido con rol **Admin** en **todos** los endpoints — el único que queda
+válido (cualquier rol) en **todos** los endpoints — el único que queda
 público es `POST /api/auth/login` (marcado con `[AllowAnonymous]`), porque sin
 login no habría forma de conseguir el primer token.
+
+### Roles: qué puede hacer cada uno
+
+Sobre esa base, cada endpoint endurece lo que hace falta con dos policies
+(`Api/Authorization/Policies.cs`):
+
+| Acción | User | Admin |
+|---|---|---|
+| Leer catálogo (`GET` movies / genres) | ✅ | ✅ |
+| Escribir catálogo (`POST/PUT/DELETE` movies / genres) | ❌ 403 | ✅ |
+| Ver **su propio** perfil, favoritos e historial | ✅ | ✅ |
+| Ver/gestionar favoritos, historial o perfil **de otro** usuario | ❌ 403 | ✅ |
+| Crear usuarios (`POST /api/users`) | ❌ 403 | ✅ |
+
+- **`AdminOnly`**: `RequireRole("Admin")`.
+- **`OwnerOrAdmin`**: `OwnerOrAdminHandler` compara el `{userId}` de la ruta con
+  el claim `sub` del token; si coinciden (o el token es Admin) autoriza. Por eso
+  las rutas de datos personales llevan siempre `{userId}` con ese nombre exacto.
+
+Un `User` autenticado que intenta algo prohibido recibe **403 Forbidden** (no
+401: sí sabemos quién es, solo que no puede). Sin token, cualquier endpoint
+protegido devuelve **401**.
 
 ### El usuario Admin inicial
 
@@ -372,9 +394,8 @@ validación.
 
 ```
 Refresh tokens   — renovar la sesión sin pedir credenciales de nuevo
-Roles adicionales — hoy solo existen User y Admin, y ningún endpoint distingue
-                     entre ambos: todo exige Admin, no hay nada reservado
-                     solo para User
+Registro público — hoy crear usuarios exige Admin; un POST /api/auth/register
+                     abierto (forzando siempre rol User) sería el paso natural
 Jwt:Key real     — en appsettings.Development.json hay una clave de ejemplo;
                      en un despliegue real debe salir de un secret manager,
                      nunca de un archivo versionado
