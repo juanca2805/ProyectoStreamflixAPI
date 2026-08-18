@@ -46,14 +46,148 @@ jobs:
       - name: Restaurar dependencias
         run: dotnet restore
 
+      # Se guarda la salida completa en build.log (además de imprimirla, con
+      # "tee") solo para poder contar warnings en el paso de resumen de más
+      # abajo, sin tener que recompilar de nuevo ahí.
       - name: Compilar (Release)
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build --no-restore --configuration Release | tee build.log
 
+      # --logger trx: además del resultado en consola, deja un .trx (XML) con
+      # los contadores (total/passed/failed) en TestResults/*, que el paso de
+      # resumen usa para armar el comentario del PR sin volver a correr nada.
       - name: Tests unitarios
-        run: dotnet test tests/StreamFlix.UnitTests --no-build --configuration Release
+        run: >-
+          dotnet test tests/StreamFlix.UnitTests --no-build --configuration Release
+          --logger "trx;LogFileName=unit.trx" --results-directory ./TestResults/unit
 
       - name: Tests de integración
         # Las migraciones se aplican solas al levantar la API en memoria
         # (Database.Migrate() en Program.cs), así que no hace falta ningún
         # paso extra para crear el esquema antes de este step.
-        run: dotnet test tests/StreamFlix.IntegrationTests --no-build --configuration Release
+        run: >-
+          dotnet test tests/StreamFlix.IntegrationTests --no-build --configuration Release
+          --logger "trx;LogFileName=integration.trx" --results-directory ./TestResults/integration
+
+      # Quedan disponibles para bajar desde la corrida en Actions (pestaña
+      # "Summary" → "Artifacts"), y son lo que arma el resumen del job "resumen-pr".
+      - name: Publicar resultados como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-build-y-tests
+          path: |
+            build.log
+            TestResults/**/*.trx
+          retention-days: 7
+
+  resumen-pr:
+    name: Resumen en el PR
+    needs: build-and-test
+    # "always()" para que el resumen se publique también cuando build-and-test
+    # falla (así el PR muestra qué pasó, no solo un ✅/❌ pelado); el "if" de
+    # github.event_name evita correr esto en un push directo a main, donde no
+    # hay ningún PR al que comentarle.
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth 0 (historial completo): git diff --stat contra el
+          # commit base del PR necesita los commits de ambos lados, y el
+          # checkout superficial (default) solo trae el último.
+          fetch-depth: 0
+
+      - name: Descargar resultados de build-and-test
+        # continue-on-error: si build-and-test falló antes de llegar a subir
+        # el artifact (ej. el propio "dotnet restore"), no hay nada que bajar
+        # — el resumen lo aclara igual, con las secciones que falten vacías.
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: resultados-build-y-tests
+
+      - name: Generar el resumen
+        id: resumen
+        run: |
+          {
+            echo "### 🤖 Resumen automático del PR"
+            echo
+            echo "Build y tests: **${{ needs.build-and-test.result }}**"
+            echo
+            echo "#### Archivos modificados"
+            echo '```'
+            git diff --stat "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" || echo "(no se pudo calcular el diff)"
+            echo '```'
+            echo
+
+            if [ -f build.log ]; then
+              WARNINGS=$(grep -c ": warning " build.log || true)
+              echo "#### Análisis de compilación"
+              echo "- Warnings: **${WARNINGS:-0}**"
+              if [ "${WARNINGS:-0}" -gt 0 ]; then
+                echo '```'
+                grep ": warning " build.log | sed -E 's#^.*/(src|tests)/#\1/#' | sort -u | head -20
+                echo '```'
+              fi
+              echo
+            fi
+
+            echo "#### Tests"
+            for suite in unit integration; do
+              trx=$(find "TestResults/$suite" -name '*.trx' 2>/dev/null | head -1)
+              if [ -z "$trx" ]; then
+                echo "- $suite: (sin resultados — el job no llegó a este paso)"
+                continue
+              fi
+              # <Counters total="N" executed="N" passed="N" failed="N" .../> en el trx.
+              TOTAL=$(grep -oE 'total="[0-9]+"' "$trx" | head -1 | grep -oE '[0-9]+')
+              PASSED=$(grep -oE 'passed="[0-9]+"' "$trx" | head -1 | grep -oE '[0-9]+')
+              FAILED=$(grep -oE 'failed="[0-9]+"' "$trx" | head -1 | grep -oE '[0-9]+')
+              if [ "${FAILED:-0}" != "0" ]; then
+                echo "- $suite: $PASSED/$TOTAL pasaron, $FAILED fallaron"
+              else
+                echo "- $suite: $PASSED/$TOTAL pasaron"
+              fi
+            done
+          } > resumen.md
+
+          cat resumen.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar/actualizar comentario en el PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('resumen.md', 'utf8');
+            // Marcador oculto: así, en cada push nuevo al PR, se actualiza
+            // este mismo comentario en vez de acumular uno por corrida.
+            const marker = '<!-- resumen-automatico-ci -->';
+            const finalBody = `${marker}\n${body}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: finalBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: finalBody,
+              });
+            }
