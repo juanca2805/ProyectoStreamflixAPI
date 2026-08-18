@@ -16,11 +16,20 @@ namespace StreamFlix.Infrastructure.Security;
 /// </summary>
 public class JwtTokenGenerator : IJwtTokenGenerator
 {
+    // Registrado como singleton (ver Infrastructure/DependencyInjection.cs), así que
+    // todo lo que depende únicamente de _options.Key -y no cambia entre llamadas- se
+    // arma una sola vez acá en el constructor, no en cada GenerateToken().
+    private static readonly JwtSecurityTokenHandler TokenHandler = new();
+
     private readonly JwtOptions _options;
+    private readonly SigningCredentials _signingCredentials;
 
     public JwtTokenGenerator(IOptions<JwtOptions> options)
     {
         _options = options.Value;
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
+        _signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
     }
 
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(User user)
@@ -34,8 +43,6 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(_options.ExpirationMinutes);
 
         var token = new JwtSecurityToken(
@@ -43,8 +50,8 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             audience: _options.Audience,
             claims: claims,
             expires: expiresAtUtc,
-            signingCredentials: credentials);
+            signingCredentials: _signingCredentials);
 
-        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAtUtc);
+        return (TokenHandler.WriteToken(token), expiresAtUtc);
     }
 }

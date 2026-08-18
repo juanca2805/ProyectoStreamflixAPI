@@ -15,18 +15,22 @@ namespace StreamFlix.Infrastructure.Persistence;
 /// </summary>
 public class AdminUserSeeder
 {
-    private readonly AppDbContext _context;
+    private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly AdminSeedOptions _options;
     private readonly ILogger<AdminUserSeeder> _logger;
 
+    // Se apoya en IUserRepository (no en AppDbContext directo) a propósito: así la
+    // normalización del email ("Trim().ToLowerInvariant()") y el AddAsync/SaveChangesAsync
+    // quedan en un único lugar (UserRepository), el mismo que usa el login. Si esa regla
+    // cambia alguna vez, no hay un segundo lugar donde también haya que acordarse de cambiarla.
     public AdminUserSeeder(
-        AppDbContext context,
+        IUserRepository userRepository,
         IPasswordHasher passwordHasher,
         IOptions<AdminSeedOptions> options,
         ILogger<AdminUserSeeder> logger)
     {
-        _context = context;
+        _userRepository = userRepository;
         _passwordHasher = passwordHasher;
         _options = options.Value;
         _logger = logger;
@@ -42,18 +46,18 @@ public class AdminUserSeeder
             return;
         }
 
-        var existing = await _context.Users.FirstOrDefaultAsync(u => u.Email == _options.Email.Trim().ToLowerInvariant());
+        var existing = await _userRepository.GetByEmailAsync(_options.Email);
         if (existing is not null)
             return;
 
         var passwordHash = _passwordHasher.Hash(_options.Password);
         var admin = new User(_options.Name, _options.Email, passwordHash, UserRole.Admin);
 
-        await _context.Users.AddAsync(admin);
+        await _userRepository.AddAsync(admin);
 
         try
         {
-            await _context.SaveChangesAsync();
+            await _userRepository.SaveChangesAsync();
         }
         catch (DbUpdateException)
         {

@@ -7,8 +7,10 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using StreamFlix.Api.Middleware;
 using StreamFlix.Application;
+using StreamFlix.Domain.Entities;
 using StreamFlix.Infrastructure;
 using StreamFlix.Infrastructure.Persistence;
+using StreamFlix.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,13 +42,16 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // --- Autenticación y autorización JWT ---
 //
-// AddJwtBearer valida los tokens que llegan en el header "Authorization: Bearer {token}":
-// misma Key/Issuer/Audience que JwtTokenGenerator (Infrastructure) usó para firmarlos,
-// leídos acá directamente de la sección "Jwt" porque validar el token es responsabilidad
-// del pipeline HTTP, no de Infrastructure.
-var jwtSection = builder.Configuration.GetSection("Jwt");
-var jwtKey = jwtSection["Key"]
-    ?? throw new InvalidOperationException("No se encontró la configuración 'Jwt:Key'.");
+// AddJwtBearer valida los tokens que llegan en el header "Authorization: Bearer {token}".
+// Se bindea el mismo JwtOptions que usa JwtTokenGenerator (Infrastructure) para firmarlos
+// -en vez de releer "Jwt:Key/Issuer/Audience" con indexers sueltos- para que un cambio de
+// nombre de sección o de propiedad rompa la compilación en los dos lados a la vez, no
+// silenciosamente en uno solo.
+var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+    ?? throw new InvalidOperationException($"No se encontró la sección '{JwtOptions.SectionName}' en la configuración.");
+
+if (string.IsNullOrEmpty(jwtOptions.Key))
+    throw new InvalidOperationException($"No se encontró la configuración '{JwtOptions.SectionName}:Key'.");
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -55,11 +60,11 @@ builder.Services
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = jwtSection["Issuer"],
+            ValidIssuer = jwtOptions.Issuer,
             ValidateAudience = true,
-            ValidAudience = jwtSection["Audience"],
+            ValidAudience = jwtOptions.Audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
@@ -67,7 +72,9 @@ builder.Services
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    // UserRole.Admin.ToString() (no el literal "Admin" suelto): así un rename del enum
+    // rompe esta línea en la compilación en vez de dejar a todo el mundo con 403 en silencio.
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole(UserRole.Admin.ToString()));
 });
 
 builder.Services.AddEndpointsApiExplorer();
