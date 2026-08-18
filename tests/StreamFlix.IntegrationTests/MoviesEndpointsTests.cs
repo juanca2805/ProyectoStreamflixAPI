@@ -1,7 +1,9 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using StreamFlix.Application.Auth.Dtos;
 using StreamFlix.Application.Genres.Dtos;
 using StreamFlix.Application.Movies.Dtos;
 using Xunit;
@@ -34,7 +36,7 @@ namespace StreamFlix.IntegrationTests;
 /// datos de test dedicada mediante una cadena de conexión distinta en
 /// appsettings.Testing.json.
 /// </summary>
-public class MoviesEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public class MoviesEndpointsTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
     private readonly HttpClient _client;
 
@@ -45,6 +47,28 @@ public class MoviesEndpointsTests : IClassFixture<WebApplicationFactory<Program>
             builder.UseEnvironment("Development");
         }).CreateClient();
     }
+
+    /// <summary>
+    /// Todos los endpoints salvo /api/auth/login exigen un token de Admin (ver
+    /// Program.cs). Antes de cada test nos logueamos con el admin que
+    /// AdminUserSeeder crea automáticamente al arrancar la app, usando las
+    /// credenciales de appsettings.Development.json ("AdminSeed"), y dejamos
+    /// el token puesto por defecto en el cliente HTTP para el resto de la clase.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest
+        {
+            Email = "admin@streamflix.com",
+            Password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login!.Token);
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetAll_DevuelveHttp200()

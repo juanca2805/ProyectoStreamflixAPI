@@ -1,4 +1,10 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using StreamFlix.Api.Middleware;
 using StreamFlix.Application;
 using StreamFlix.Infrastructure;
@@ -17,10 +23,52 @@ var builder = WebApplication.CreateBuilder(args);
 //   un MovieService" en su constructor, y el framework se lo entrega ya armado.
 //   Esto también es lo que permite reemplazar MovieRepository por un mock en los tests
 //   sin tocar ni una línea del Controller.
-builder.Services.AddControllers();
+//
+// AuthorizeFilter global: por defecto, CADA acción de CADA controller exige
+// un usuario autenticado que cumpla la policy "AdminOnly" (ver más abajo),
+// sin tener que decorar cada controller con [Authorize] a mano y sin
+// arriesgarse a olvidarlo en uno nuevo. AuthController es la única excepción,
+// marcada explícitamente con [AllowAnonymous]: sin login no hay token, y sin
+// token ningún otro endpoint sería alcanzable.
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add(new AuthorizeFilter("AdminOnly"));
+});
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// --- Autenticación y autorización JWT ---
+//
+// AddJwtBearer valida los tokens que llegan en el header "Authorization: Bearer {token}":
+// misma Key/Issuer/Audience que JwtTokenGenerator (Infrastructure) usó para firmarlos,
+// leídos acá directamente de la sección "Jwt" porque validar el token es responsabilidad
+// del pipeline HTTP, no de Infrastructure.
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwtSection["Key"]
+    ?? throw new InvalidOperationException("No se encontró la configuración 'Jwt:Key'.");
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSection["Issuer"],
+            ValidateAudience = true,
+            ValidAudience = jwtSection["Audience"],
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -30,6 +78,22 @@ builder.Services.AddSwaggerGen(options =>
         Title = "StreamFlix API",
         Version = "v1",
         Description = "API educativa para practicar arquitectura limpia en .NET, inspirada conceptualmente en Netflix."
+    });
+
+    // Agrega el botón "Authorize" en Swagger UI para poder pegar el JWT
+    // (obtenido en POST /api/auth/login) y que viaje en cada request de prueba.
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Pegar solo el token (sin el prefijo \"Bearer \"), obtenido en POST /api/auth/login."
+    });
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        { new OpenApiSecuritySchemeReference("Bearer", document), new List<string>() }
     });
 });
 
@@ -49,6 +113,12 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // Idempotente: si el usuario configurado en "AdminSeed" ya existe, no hace nada.
+    // Sin esto, con el filtro global "AdminOnly" ya activo, nadie podría loguearse
+    // nunca para conseguir el primer token.
+    var adminSeeder = scope.ServiceProvider.GetRequiredService<AdminUserSeeder>();
+    await adminSeeder.SeedAsync();
 }
 
 // --- Pipeline HTTP ---
@@ -70,6 +140,11 @@ if (app.Environment.IsDevelopment())
 // solo expone una URL HTTP (a propósito, para mantener el proyecto simple
 // sin gestionar certificados de desarrollo). Si más adelante se sirve detrás
 // de HTTPS (ej. un proxy en producción), se puede volver a agregar.
+//
+// UseAuthentication ANTES que UseAuthorization: primero hay que resolver
+// "quién es" (leer y validar el JWT del header, si vino uno) antes de poder
+// decidir "qué puede hacer" (evaluar la policy "AdminOnly").
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

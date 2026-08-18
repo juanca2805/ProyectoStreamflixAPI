@@ -8,4 +8,11 @@ namespace StreamFlix.Application.Common.Interfaces;
 public interface IPasswordHasher
 {
     string Hash(string plainPassword);
+
+    /// <summary>
+    /// Verifica que una contraseña en texto plano corresponda al hash almacenado.
+    /// Necesario para el login: no se puede "deshacer" un hash, solo volver a
+    /// calcularlo con la misma sal y compararlo contra el que ya está guardado.
+    /// </summary>
+    bool Verify(string plainPassword, string passwordHash);
 }
