@@ -1,8 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using StreamFlix.Application.Auth.Dtos;
 using StreamFlix.Application.Genres.Dtos;
 using StreamFlix.Application.Movies.Dtos;
@@ -36,16 +34,18 @@ namespace StreamFlix.IntegrationTests;
 /// datos de test dedicada mediante una cadena de conexión distinta en
 /// appsettings.Testing.json.
 /// </summary>
-public class MoviesEndpointsTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
+[Collection(IntegrationTestCollection.Name)]
+public class MoviesEndpointsTests : IAsyncLifetime
 {
     private readonly HttpClient _client;
 
-    public MoviesEndpointsTests(WebApplicationFactory<Program> factory)
+    // StreamFlixApiFactory llega inyectada como fixture COMPARTIDA de la colección
+    // "Integration" (ver IntegrationTestCollection): esta clase no levanta su propio
+    // host, reusa el mismo que AuthEndpointsTests, así Database.Migrate() corre una
+    // sola vez para toda la corrida de tests en vez de una vez por clase.
+    public MoviesEndpointsTests(StreamFlixApiFactory factory)
     {
-        _client = factory.WithWebHostBuilder(builder =>
-        {
-            builder.UseEnvironment("Development");
-        }).CreateClient();
+        _client = factory.CreateClient();
     }
 
     /// <summary>

@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using StreamFlix.Application.Auth.Dtos;
 using Xunit;
 
@@ -12,16 +10,16 @@ namespace StreamFlix.IntegrationTests;
 /// credenciales de "AdminSeed" en appsettings.Development.json) pueda loguearse,
 /// y que el resto de la API sea inaccesible sin un token válido de Admin.
 /// </summary>
-public class AuthEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection(IntegrationTestCollection.Name)]
+public class AuthEndpointsTests
 {
     private readonly HttpClient _client;
 
-    public AuthEndpointsTests(WebApplicationFactory<Program> factory)
+    // Misma StreamFlixApiFactory compartida que MoviesEndpointsTests (ver
+    // IntegrationTestCollection): un solo host, un solo Database.Migrate().
+    public AuthEndpointsTests(StreamFlixApiFactory factory)
     {
-        _client = factory.WithWebHostBuilder(builder =>
-        {
-            builder.UseEnvironment("Development");
-        }).CreateClient();
+        _client = factory.CreateClient();
     }
 
     [Fact]
